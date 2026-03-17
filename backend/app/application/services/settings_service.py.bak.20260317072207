@@ -18,12 +18,9 @@ class SettingsService:
     """Manage persisted user settings with environment defaults."""
 
     SKILL_POLICY_CACHE_TTL_SECONDS = 60.0
-    """Cache TTL in seconds for skill auto-trigger policy."""
     SKILL_POLICY_CACHE_MAX_ENTRIES = 2000
-    """Maximum number of entries in the skill auto-trigger policy cache."""
 
     def __init__(self) -> None:
-        """Initialize the settings service."""
         # user_id -> (value, expires_at_monotonic)
         self._skill_policy_cache: OrderedDict[str, tuple[bool, float]] = OrderedDict()
         self._skill_policy_cache_lock = asyncio.Lock()
@@ -33,9 +30,13 @@ class SettingsService:
         """Normalize persisted/env chain values into canonical provider order."""
         return normalize_search_provider_chain(raw)
 
+    @classmethod
+    def _normalize_search_provider_chain(cls, raw: Any) -> list[str]:
+        """Normalize persisted/env chain values into canonical provider order."""
+        return normalize_search_provider_chain(raw)
+
     @staticmethod
     def get_default_settings() -> dict[str, Any]:
-        """Get default settings with environment values."""
         config = get_settings()
         return {
             "llm_provider": config.llm_provider,
@@ -56,14 +57,12 @@ class SettingsService:
         }
 
     def _get_settings_collection(self):
-        """Get the settings collection from the MongoDB database."""
         config = get_settings()
         mongodb = get_mongodb()
         db = mongodb.client[config.mongodb_database]
         return db.get_collection("user_settings")
 
     async def get_user_settings(self, user_id: str) -> dict[str, Any]:
-        """Get user settings with environment defaults."""
         settings_collection = self._get_settings_collection()
         settings_doc = await settings_collection.find_one({"user_id": user_id})
         if settings_doc:
@@ -115,7 +114,6 @@ class SettingsService:
         return value
 
     async def update_user_settings(self, user_id: str, updates: dict[str, Any]) -> dict[str, Any]:
-        """Update user settings and cache the skill auto-trigger policy."""
         settings_collection = self._get_settings_collection()
         settings_doc = await settings_collection.find_one({"user_id": user_id})
         if not settings_doc:
@@ -133,7 +131,6 @@ class SettingsService:
         return resolved
 
     async def _get_cached_skill_policy(self, user_id: str) -> bool | None:
-        """Get the cached skill auto-trigger policy for the given user ID."""
         now = time.monotonic()
         async with self._skill_policy_cache_lock:
             cached = self._skill_policy_cache.get(user_id)
@@ -149,7 +146,6 @@ class SettingsService:
             return value
 
     async def _set_cached_skill_policy(self, user_id: str, value: bool) -> None:
-        """Set the cached skill auto-trigger policy for the given user ID."""
         expires_at = time.monotonic() + self.SKILL_POLICY_CACHE_TTL_SECONDS
         async with self._skill_policy_cache_lock:
             self._skill_policy_cache[user_id] = (value, expires_at)
@@ -161,5 +157,4 @@ class SettingsService:
 
 @lru_cache
 def get_settings_service() -> SettingsService:
-    """Get a singleton instance of the settings service."""
     return SettingsService()
