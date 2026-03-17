@@ -21,21 +21,11 @@ class BrowserWorkflowService:
     _EVENT_COUNTER = count()
 
     def __init__(self, scraper: ScraplingAdapter, settings: Settings) -> None:
-        """
-        Initialize the browser workflow service.
-
-        :param scraper: The scraper adapter instance.
-        :param settings: The application settings instance.
-        """
         self._scraper = scraper
         self._settings = settings
 
     async def get_capabilities(self) -> dict[str, Any]:
-        """
-        Return available modes and current cache/proxy capabilities.
-
-        :return: A dictionary containing available modes and cache/proxy information.
-        """
+        """Return available modes and current cache/proxy capabilities."""
         available_modes = ["http", "dynamic", "stealth"]
         if getattr(self._settings, "stealth_cloudflare_enabled", False):
             available_modes.append("cloudflare")
@@ -57,14 +47,7 @@ class BrowserWorkflowService:
         mode: str | StealthMode = StealthMode.DYNAMIC,
         options: FetchOptions | None = None,
     ) -> AsyncGenerator[dict[str, Any], None]:
-        """
-        Yield progress events while fetching a URL.
-
-        :param url: The URL to fetch.
-        :param mode: The initial fetch mode.
-        :param options: Additional fetch options.
-        :yield: Progress events.
-        """
+        """Yield progress events while fetching a URL."""
         resolved_mode = self._coerce_mode(mode)
         merged_options = dict(options or {})
         merged_options["mode"] = resolved_mode
@@ -93,13 +76,7 @@ class BrowserWorkflowService:
         yield self._build_event(phase, **payload)
 
     async def fetch_with_escalation(self, url: str, options: FetchOptions | None = None) -> FetchResult:
-        """
-        Fetch using the requested mode and escalate when needed.
-
-        :param url: The URL to fetch.
-        :param options: Additional fetch options.
-        :return: The fetch result.
-        """
+        """Fetch using the requested mode and escalate when needed."""
         merged_options = dict(options or {})
         current_mode = self._coerce_mode(merged_options.get("mode", StealthMode.HTTP))
         attempted: set[StealthMode] = set()
@@ -133,23 +110,10 @@ class BrowserWorkflowService:
         return last_result
 
     async def invalidate_cache(self, url: str | None = None) -> int:
-        """
-        Invalidate cache entries through the scraper adapter.
-
-        :param url: The URL to invalidate cache for.
-        :return: The number of invalidated cache entries.
-        """
+        """Invalidate cache entries through the scraper adapter."""
         return await self._scraper.invalidate_cache(url)
 
     async def _fetch_once(self, url: str, mode: StealthMode, options: dict[str, Any]) -> FetchResult:
-        """
-        Fetch a URL once using the given mode and options.
-
-        :param url: The URL to fetch.
-        :param mode: The fetch mode.
-        :param options: Additional fetch options.
-        :return: The fetch result.
-        """
         call_kwargs = {key: value for key, value in options.items() if key != "mode"}
 
         if mode == StealthMode.HTTP:
@@ -161,14 +125,6 @@ class BrowserWorkflowService:
 
     @staticmethod
     def _normalize_result(url: str, mode: StealthMode, fetched: ScrapedContent) -> FetchResult:
-        """
-        Normalize the fetch result.
-
-        :param url: The original URL.
-        :param mode: The fetch mode.
-        :param fetched: The scraped content.
-        :return: The normalized fetch result.
-        """
         content = fetched.html or fetched.text
         return FetchResult(
             content=content or "",
@@ -184,12 +140,6 @@ class BrowserWorkflowService:
 
     @staticmethod
     def _coerce_mode(mode: str | StealthMode) -> StealthMode:
-        """
-        Coerce the mode to a StealthMode instance.
-
-        :param mode: The mode to coerce.
-        :return: The coerced mode.
-        """
         if isinstance(mode, StealthMode):
             return mode
         normalized = mode.strip().lower()
@@ -201,12 +151,6 @@ class BrowserWorkflowService:
             return StealthMode.HTTP
 
     def _suggest_next_mode(self, current_mode: StealthMode) -> StealthMode | None:
-        """
-        Suggest the next mode based on the current mode.
-
-        :param current_mode: The current mode.
-        :return: The suggested next mode.
-        """
         if current_mode in {StealthMode.HTTP, StealthMode.DYNAMIC}:
             return StealthMode.STEALTH
         if current_mode == StealthMode.STEALTH and getattr(self._settings, "stealth_cloudflare_enabled", False):
@@ -215,12 +159,6 @@ class BrowserWorkflowService:
 
     @staticmethod
     def _serialize_proxy_health(health: ProxyHealth | Any) -> dict[str, Any]:
-        """
-        Serialize the proxy health.
-
-        :param health: The proxy health.
-        :return: The serialized proxy health.
-        """
         if isinstance(health, ProxyHealth):
             return health.model_dump(mode="json")
         if isinstance(health, dict):
@@ -229,12 +167,6 @@ class BrowserWorkflowService:
 
     @staticmethod
     def _tier_from_mode(result: FetchResult) -> str:
-        """
-        Get the tier used based on the fetch result.
-
-        :param result: The fetch result.
-        :return: The tier used.
-        """
         if result.get("from_cache", False):
             return "cache"
         if result["mode_used"] == StealthMode.STEALTH:
@@ -243,22 +175,10 @@ class BrowserWorkflowService:
 
     @classmethod
     def _next_event_id(cls) -> str:
-        """
-        Generate the next event ID.
-
-        :return: The next event ID.
-        """
         return f"{int(time.time() * 1000)}-{next(cls._EVENT_COUNTER)}"
 
     @classmethod
     def _build_event(cls, phase: str, **payload: Any) -> dict[str, Any]:
-        """
-        Build an event.
-
-        :param phase: The event phase.
-        :param payload: The event payload.
-        :return: The event.
-        """
         return {
             "event_id": cls._next_event_id(),
             "phase": phase,
