@@ -22,25 +22,15 @@ class EmailService:
     VERIFICATION_CODE_EXPIRY_SECONDS = 300  # 5 minutes
 
     def __init__(self, cache: Cache):
-        """Initialize EmailService instance.
-
-        Args:
-            cache: Cache instance for storing verification codes.
-        """
         self.settings = get_settings()
         self.cache = cache
 
     def _generate_verification_code(self) -> str:
-        """Generate 6-digit verification code using cryptographically secure random."""
+        """Generate 6-digit verification code using cryptographically secure random"""
         return f"{secrets.randbelow(900000) + 100000}"
 
     async def _store_verification_code(self, email: str, code: str) -> None:
-        """Store verification code with expiration time in cache.
-
-        Args:
-            email: Email address associated with the verification code.
-            code: Verification code to store.
-        """
+        """Store verification code with expiration time in cache"""
         now = datetime.now(UTC)
         # Create verification code data
         code_data = {
@@ -59,13 +49,6 @@ class EmailService:
 
         Uses an atomic Redis increment for the attempt counter to prevent
         concurrent bypass of the 3-attempt limit.
-
-        Args:
-            email: Email address associated with the verification code.
-            code: Verification code to verify.
-
-        Returns:
-            True if the code is valid, False otherwise.
         """
         key = f"{self.VERIFICATION_CODE_PREFIX}{email}"
         attempts_key = f"{key}:attempts"
@@ -112,15 +95,7 @@ class EmailService:
         return False
 
     def _create_verification_email(self, email: str, code: str) -> MIMEMultipart:
-        """Create verification email content.
-
-        Args:
-            email: Email address associated with the verification code.
-            code: Verification code to include in the email.
-
-        Returns:
-            MIMEMultipart instance representing the verification email.
-        """
+        """Create verification email content"""
         msg = MIMEMultipart()
         msg["From"] = self.settings.email_from or self.settings.email_username
         msg["To"] = email
@@ -145,11 +120,7 @@ class EmailService:
         return msg
 
     async def send_verification_code(self, email: str):
-        """Send verification code to email address.
-
-        Args:
-            email: Email address to send the verification code to.
-        """
+        """Send verification code to email address"""
         # Check if email configuration is available
         if not all(
             [
@@ -195,12 +166,7 @@ class EmailService:
         logger.info(f"Verification code sent to {email}")
 
     async def _send_smtp_email(self, msg: MIMEMultipart, email: str) -> None:
-        """Send email using SMTP via thread pool to avoid blocking the event loop.
-
-        Args:
-            msg: MIMEMultipart instance representing the email message.
-            email: Email address to send the email to.
-        """
+        """Send email using SMTP via thread pool to avoid blocking the event loop."""
         host = self.settings.email_host
         port = self.settings.email_port
         username = self.settings.email_username
@@ -232,16 +198,7 @@ class EmailService:
         rating: int,
         feedback: str | None = None,
     ) -> None:
-        """Send rating notification email with structured JSON data.
-
-        Args:
-            user_email: Email address of the user who rated the session.
-            user_name: Name of the user who rated the session.
-            session_id: ID of the session being rated.
-            report_id: ID of the report being rated.
-            rating: Rating given by the user.
-            feedback: Optional feedback provided by the user.
-        """
+        """Send rating notification email with structured JSON data."""
         target = self.settings.rating_notification_email
         if not target:
             logger.debug("No rating_notification_email configured, skipping")
@@ -274,3 +231,54 @@ class EmailService:
         msg["From"] = self.settings.email_from or self.settings.email_username
         msg["To"] = target
         msg["Subject"] = f"Pythinker Rating: {stars} ({rating}/5) from {user_name}"
+
+        json_str = json.dumps(rating_data, indent=2, ensure_ascii=False)
+        body = f"""
+        <html>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; color: #333;">
+            <h2 style="margin-bottom: 4px;">Session Rating: {stars}</h2>
+            <p style="color: #666; margin-top: 0;">
+                <strong>{user_name}</strong> ({user_email}) rated <strong>{rating}/5</strong>
+            </p>
+            {f'<p style="background: #f5f5f5; padding: 12px; border-radius: 8px; border-left: 3px solid #3b82f6;">{feedback}</p>' if feedback else ""}
+            <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;" />
+            <details>
+                <summary style="cursor: pointer; color: #888; font-size: 13px;">JSON Data</summary>
+                <pre style="background: #f8f8f8; padding: 12px; border-radius: 8px; font-size: 12px; overflow-x: auto;">{json_str}</pre>
+            </details>
+            <p style="color: #aaa; font-size: 11px; margin-top: 20px;">Pythinker Rating System</p>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(body, "html"))
+
+        try:
+            await self._send_smtp_email(msg, target)
+            logger.info("Rating email sent to %s for session %s", target, session_id)
+        except Exception:
+            logger.exception("Failed to send rating email")
+
+    async def cleanup_expired_codes(self) -> None:
+        """Clean up expired verification codes - Cache TTL handles this automatically"""
+        # Cache automatically handles expiration via TTL, so this method is mainly for manual cleanup
+
+        # Get all verification code keys
+        pattern = f"{self.VERIFICATION_CODE_PREFIX}*"
+        keys = await self.cache.keys(pattern)
+
+        expired_count = 0
+        for key in keys:
+            data = await self.cache.get(key)
+            if data:
+                try:
+                    expires_at = datetime.fromisoformat(data["expires_at"])
+                    if datetime.now(UTC) > expires_at:
+                        await self.cache.delete(key)
+                        expired_count += 1
+                except (KeyError, ValueError):
+                    # Invalid data, delete it
+                    await self.cache.delete(key)
+                    expired_count += 1
+
+        if expired_count > 0:
+            logger.info(f"Cleaned up {expired_count} expired verification codes")
