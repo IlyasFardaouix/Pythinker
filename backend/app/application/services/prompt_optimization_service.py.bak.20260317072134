@@ -12,14 +12,8 @@ from __future__ import annotations
 import logging
 
 from app.core.config import get_settings
-from app.domain.models.prompt_optimization import (
-    OptimizationRun,
-    OptimizerType,
-)
-from app.domain.models.prompt_profile import (
-    PromptProfile,
-    PromptTarget,
-)
+from app.domain.models.prompt_optimization import OptimizationRun, OptimizerType
+from app.domain.models.prompt_profile import PromptProfile, PromptTarget
 from app.domain.repositories.prompt_profile_repository import (
     OptimizationRunRepository,
     PromptArtifactRepository,
@@ -39,13 +33,6 @@ class PromptOptimizationService:
         run_repo: OptimizationRunRepository,
         artifact_repo: PromptArtifactRepository,
     ) -> None:
-        """Initialize the service with repositories.
-
-        Args:
-            profile_repo: PromptProfileRepository instance.
-            run_repo: OptimizationRunRepository instance.
-            artifact_repo: PromptArtifactRepository instance.
-        """
         self._profile_repo = profile_repo
         self._run_repo = run_repo
         self._artifact_repo = artifact_repo
@@ -54,8 +41,9 @@ class PromptOptimizationService:
     # Optimization Runs
     # ------------------------------------------------------------------
 
-    async def start_optimization_run(
+    async def start_run(
         self,
+        *,
         target: PromptTarget,
         optimizer: OptimizerType = OptimizerType.MIPROV2_LIGHT,
         config: dict | None = None,
@@ -87,77 +75,31 @@ class PromptOptimizationService:
         logger.info("Created optimization run %s for target=%s", run.id, target.value)
         return run
 
-    async def get_optimization_run(self, run_id: str) -> OptimizationRun | None:
-        """Retrieve an optimization run by ID.
-
-        Args:
-            run_id: ID of the optimization run.
-
-        Returns:
-            OptimizationRun instance or None if not found.
-        """
+    async def get_run(self, run_id: str) -> OptimizationRun | None:
         return await self._run_repo.get_run(run_id)
 
-    async def list_optimization_runs(self, limit: int = 20) -> list[OptimizationRun]:
-        """Retrieve a list of optimization runs.
-
-        Args:
-            limit: Maximum number of runs to retrieve (default: 20).
-
-        Returns:
-            List of OptimizationRun instances.
-        """
+    async def list_runs(self, limit: int = 20) -> list[OptimizationRun]:
         return await self._run_repo.list_runs(limit=limit)
 
     # ------------------------------------------------------------------
     # Prompt Profiles
     # ------------------------------------------------------------------
 
-    async def get_prompt_profile(self, profile_id: str) -> PromptProfile | None:
-        """Retrieve a prompt profile by ID.
-
-        Args:
-            profile_id: ID of the prompt profile.
-
-        Returns:
-            PromptProfile instance or None if not found.
-        """
+    async def get_profile(self, profile_id: str) -> PromptProfile | None:
         return await self._profile_repo.get_profile(profile_id)
 
-    async def get_active_prompt_profile(self) -> PromptProfile | None:
-        """Retrieve the active prompt profile.
-
-        Returns:
-            PromptProfile instance or None if not found.
-        """
+    async def get_active_profile(self) -> PromptProfile | None:
         return await self._profile_repo.get_active_profile()
 
-    async def list_prompt_profiles(self, limit: int = 20) -> list[PromptProfile]:
-        """Retrieve a list of prompt profiles.
-
-        Args:
-            limit: Maximum number of profiles to retrieve (default: 20).
-
-        Returns:
-            List of PromptProfile instances.
-        """
+    async def list_profiles(self, limit: int = 20) -> list[PromptProfile]:
         return await self._profile_repo.list_profiles(limit=limit)
 
-    async def activate_prompt_profile(self, profile_id: str) -> PromptProfile:
-        """Activate a prompt profile and seed the runtime Thompson-sampling bandit.
+    async def activate_profile(self, profile_id: str) -> PromptProfile:
+        """Activate a profile and seed the runtime Thompson-sampling bandit.
 
         This is the publish step: after activation the PromptProfileResolver
         will start applying the profile's patches to incoming requests
         (subject to feature flags and canary policy).
-
-        Args:
-            profile_id: ID of the prompt profile to activate.
-
-        Returns:
-            Activated PromptProfile instance.
-
-        Raises:
-            ValueError: If the prompt profile does not exist.
         """
         profile = await self._profile_repo.get_profile(profile_id)
         if profile is None:
@@ -187,17 +129,14 @@ class PromptOptimizationService:
         logger.info("Activated PromptProfile %s", profile_id)
         return profile
 
-    async def rollback_prompt_profile(self, profile_id: str) -> None:
-        """Deactivate a specific prompt profile (one-click rollback).
+    async def rollback_profile(self, profile_id: str) -> None:
+        """Deactivate a specific profile (one-click rollback).
 
         After rollback the system falls back to baseline prompts immediately
         (all feature-flag-gated paths return BASELINE mode).
 
-        Args:
-            profile_id: ID of the prompt profile to deactivate.
-
         Raises:
-            ValueError: If the prompt profile does not exist.
+            ValueError: If the profile does not exist.
         """
         profile = await self._profile_repo.get_profile(profile_id)
         if profile is None:
@@ -210,20 +149,7 @@ class PromptOptimizationService:
     # ------------------------------------------------------------------
 
     async def load_artifact(self, artifact_id: str) -> bytes | None:
-        """Load an artifact by ID.
-
-        Args:
-            artifact_id: ID of the artifact.
-
-        Returns:
-            Artifact data or None if not found.
-        """
         return await self._artifact_repo.load_artifact(artifact_id)
 
     async def delete_artifact(self, artifact_id: str) -> None:
-        """Delete an artifact by ID.
-
-        Args:
-            artifact_id: ID of the artifact to delete.
-        """
         await self._artifact_repo.delete_artifact(artifact_id)
