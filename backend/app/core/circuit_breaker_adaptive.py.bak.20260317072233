@@ -20,14 +20,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class AdaptiveThresholdSettings:
+class AdaptiveConfig:
     """Adaptive threshold settings."""
 
-    MIN_FAILURE_THRESHOLD: int = 2
-    MAX_FAILURE_THRESHOLD: int = 10
-    ADJUST_STEP: int = 1
-    HIGH_FAILURE_RATE: float = 0.7
-    LOW_FAILURE_RATE: float = 0.1
+    min_failure_threshold: int = 2
+    max_failure_threshold: int = 10
+    adjust_step: int = 1
+    high_failure_rate: float = 0.7
+    low_failure_rate: float = 0.1
 
 
 class AdaptiveCircuitBreaker(CircuitBreaker):
@@ -37,31 +37,16 @@ class AdaptiveCircuitBreaker(CircuitBreaker):
         self,
         name: str,
         config: CircuitBreakerConfig | None = None,
-        adaptive_config: AdaptiveThresholdSettings | None = None,
+        adaptive_config: AdaptiveConfig | None = None,
         failure_tracker: FailureTracker | None = None,
         recovery_monitor: RecoveryMonitor | None = None,
     ) -> None:
-        """
-        Initialize the adaptive circuit breaker.
-
-        Args:
-            name: The name of the circuit breaker.
-            config: The circuit breaker configuration.
-            adaptive_config: The adaptive threshold settings.
-            failure_tracker: The failure tracker instance.
-            recovery_monitor: The recovery monitor instance.
-        """
         super().__init__(name, config)
-        self._adaptive_config = adaptive_config or AdaptiveThresholdSettings()
+        self._adaptive_config = adaptive_config or AdaptiveConfig()
         self._failure_tracker = failure_tracker or FailureTracker()
         self._recovery_monitor = recovery_monitor or RecoveryMonitor()
 
     def record_success(self) -> None:
-        """
-        Record a successful operation.
-
-        This method updates the failure tracker and adapts the threshold upward on sustained stability.
-        """
         super().record_success()
         self._failure_tracker.record_success(self.name)
 
@@ -69,15 +54,10 @@ class AdaptiveCircuitBreaker(CircuitBreaker):
         record_circuit_breaker_failure_rate(self.name, stats.failure_rate)
 
         # Adapt threshold upward on sustained stability
-        if stats.failure_rate <= self._adaptive_config.LOW_FAILURE_RATE:
+        if stats.failure_rate <= self._adaptive_config.low_failure_rate:
             self._adjust_threshold(increase=True)
 
     def record_failure(self) -> None:
-        """
-        Record a failed operation.
-
-        This method updates the failure tracker and adapts the threshold downward on high failure rate.
-        """
         super().record_failure()
         self._failure_tracker.record_failure(self.name, "failure")
 
@@ -85,16 +65,10 @@ class AdaptiveCircuitBreaker(CircuitBreaker):
         record_circuit_breaker_failure_rate(self.name, stats.failure_rate)
 
         # Adapt threshold downward on high failure rate
-        if stats.failure_rate >= self._adaptive_config.HIGH_FAILURE_RATE:
+        if stats.failure_rate >= self._adaptive_config.high_failure_rate:
             self._adjust_threshold(increase=False)
 
     def _transition_to(self, new_state: CircuitState) -> None:
-        """
-        Transition the circuit breaker to a new state.
-
-        Args:
-            new_state: The new state of the circuit breaker.
-        """
         super()._transition_to(new_state)
 
         if new_state == CircuitState.OPEN:
@@ -107,17 +81,11 @@ class AdaptiveCircuitBreaker(CircuitBreaker):
                 record_circuit_breaker_mttr(self.name, stats.last_recovery_seconds)
 
     def _adjust_threshold(self, increase: bool) -> None:
-        """
-        Adjust the failure threshold based on the adaptive settings.
-
-        Args:
-            increase: Whether to increase or decrease the threshold.
-        """
         current = self.config.failure_threshold
         if increase:
-            updated = min(current + self._adaptive_config.ADJUST_STEP, self._adaptive_config.MAX_FAILURE_THRESHOLD)
+            updated = min(current + self._adaptive_config.adjust_step, self._adaptive_config.max_failure_threshold)
         else:
-            updated = max(current - self._adaptive_config.ADJUST_STEP, self._adaptive_config.MIN_FAILURE_THRESHOLD)
+            updated = max(current - self._adaptive_config.adjust_step, self._adaptive_config.min_failure_threshold)
 
         if updated != current:
             self.config.failure_threshold = updated
@@ -126,14 +94,3 @@ class AdaptiveCircuitBreaker(CircuitBreaker):
                 "Adaptive circuit breaker threshold updated",
                 extra={"circuit_breaker": self.name, "failure_threshold": updated},
             )
-```
-
-Note that I've made the following changes:
-
-* Renamed the `AdaptiveConfig` class to `AdaptiveThresholdSettings` to better reflect its purpose.
-* Renamed the `adjust_step` attribute to `ADJUST_STEP` to follow Python's naming conventions.
-* Renamed the `high_failure_rate` and `low_failure_rate` attributes to `HIGH_FAILURE_RATE` and `LOW_FAILURE_RATE` respectively.
-* Improved the docstrings for the `record_success` and `record_failure` methods to better describe their behavior.
-* Improved the docstring for the `__init__` method to better describe its parameters.
-* Improved the docstring for the `_adjust_threshold` method to better describe its behavior.
-* Improved the naming conventions for the variables and methods to follow Python's PEP 8 guidelines.
